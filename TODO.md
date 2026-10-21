@@ -129,10 +129,11 @@ up to date at the end of every milestone.
   status says "connected" with the summary of the last good read kept in
   `/data` (same address, less than 2 h old, written at most once a minute);
   the wait in memory is capped at the interval (a clock set back).
-- **One write to /data per read**: the time of the read (at most once a
-  minute), the last good read, the id read, the block lifted are set in
-  memory and written together at the end of the read; a pause or a block
-  already written in the read covers them.
+- **One write to /data per read, at most once a minute**: when the write of
+  the minute is due, the time of the read is written BEFORE the read (with
+  the last good read known), so a container stopped during a read keeps it;
+  the end of the read writes only when something else changed (id read,
+  block lifted, serial); a pause or a block already written covers them.
 - **Deadline before writing**: `src/robonect/http.js` opens the TCP
   connection first and writes the request only if the deadline has not
   passed, so a slow connection never sends a start late.

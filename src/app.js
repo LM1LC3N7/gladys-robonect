@@ -385,16 +385,18 @@ export class RobonectApp {
   }
 
   /**
-   * Keeps the time of this read; in /data at most once a minute, with the
-   * last good read, in the one write of the read (end of run).
+   * Keeps the time of this read; when the write of the minute is due, in
+   * /data BEFORE the read (a container stopped during the read keeps it),
+   * with the last good read known. At most one write a minute; the end of
+   * the read writes only when something else changed (id, block, serial).
    */
-  noteAttempt() {
+  async noteAttempt() {
     const now = this.now();
     this.lastAttemptAt = now;
     const stored = this.memory.lastAttemptAt;
     if (stored === null || now - stored >= TIMINGS.attemptWriteEvery) {
       this.memory.lastAttemptAt = now;
-      this.dirty = true;
+      await this.saveMemory();
     }
   }
 
@@ -407,7 +409,10 @@ export class RobonectApp {
     }
     let delay;
     const startedAt = this.now();
-    this.noteAttempt();
+    await this.noteAttempt();
+    if (generation !== this.generation) {
+      return;
+    }
     try {
       const read = await this.client.status(this.config.address, this.config.auth, {
         timeoutMs: TIMINGS.readTimeout,
@@ -442,7 +447,7 @@ export class RobonectApp {
       }
     }
     if (this.dirty) {
-      // The one write of this read (a pause or a block may already have written it all).
+      // Only when something else changed in this read (a pause or a block already wrote it).
       await this.saveMemory();
     }
     await this.publishAll();

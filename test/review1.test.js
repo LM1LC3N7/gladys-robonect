@@ -292,3 +292,34 @@ test('R-C (R4): one write to /data per read at most, at most once a minute', asy
   assert.ok(store.saves - saves <= 10, `${store.saves - saves} writes in 10 min`);
   assert.ok(store.data.lastGood, 'the last good read is written');
 });
+
+// --- Review 3 (M-1) -----------------------------------------------------------------
+
+test('M-1 (R11): the time of a read is saved before it; a stop during the read keeps it', async (t) => {
+  const server = fakeModule();
+  const store = memoryStore();
+  const config = { ...CFG, poll_interval: 3600 };
+  const ctx = await setup(t, { server, store, config });
+  await ctx.advance(3600 * SECOND - 1000, 10_000);
+  server.mower.delays.status = 5000;
+  // The read at 3600 s is in flight when the container stops.
+  await ctx.advance(3 * SECOND);
+  const readAt = Date.now() - 2000;
+  assert.equal(store.data.lastAttemptAt, readAt, 'saved before the answer');
+  ctx.app.stop();
+  const again = new RobonectApp({
+    gladys: ctx.gladys,
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    transport: server.transport,
+    now: () => Date.now(),
+    store,
+  });
+  t.after(() => again.stop());
+  server.mower.delays.status = 0;
+  const reads = server.reads();
+  await again.start(config);
+  await ctx.advance(3500 * SECOND, 10_000);
+  assert.equal(server.reads(), reads, 'no read sooner than the interval');
+  await ctx.advance(200 * SECOND, 10_000);
+  assert.ok(server.reads() > reads);
+});
