@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-21
+
 ### Added
 
 - Robotic mowers fitted with a Robonect module, read over the local JSON API
@@ -48,3 +50,6 @@ the notes of the version's GitHub Release.
   next read identifies the module again; one write to `/data` per read.
 - "Test the connection" button; documentation in English and French;
   `LICENSE` and `THIRD_PARTY_NOTICES.md` shipped in the image.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-robonect/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-robonect/releases/tag/v0.1.1
