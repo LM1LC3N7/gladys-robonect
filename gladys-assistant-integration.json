@@ -1,177 +1,164 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Robonect",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Robotic mowers with a Robonect module, locally: state, battery, errors; pause, base, start.",
+    "fr": "Tondeuses robots avec module Robonect, en local : état, batterie, erreurs ; pause, base, départ."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-robonect:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-robonect/main/cover.png",
+  "categories": ["appliances"],
+  "transports": ["local"],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your mower and its Robonect module",
+        "fr": "Votre tondeuse et son module Robonect"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Shows a robotic mower fitted with a Robonect module (Husqvarna Automower, Gardena, Flymo, McCulloch) in Gladys through the local JSON API of the module, without any cloud: state, mode, battery, error, mowing hours, Wi-Fi signal, blades, next timer start. Pause and back to the base are always available; starting the mower from Gladys is off until you allow it below. Enter the IP address of the module (give it a fixed address in your router), its user name and password, save, then add the mower from the Discovery tab. This is not the gladys-automower integration (Husqvarna cloud, no module needed). Never tested with a real device. Not affiliated with Robonect.",
+        "fr": "Affiche une tondeuse robot équipée d'un module Robonect (Husqvarna Automower, Gardena, Flymo, McCulloch) dans Gladys par l'API JSON locale du module, sans cloud : état, mode, batterie, erreur, heures de tonte, signal Wi-Fi, lames, prochain départ du minuteur. La pause et le retour à la base sont toujours disponibles ; le démarrage depuis Gladys reste désactivé tant que vous ne l'autorisez pas ci-dessous. Saisissez l'adresse IP du module (donnez-lui une adresse fixe dans votre box), son nom d'utilisateur et son mot de passe, enregistrez, puis ajoutez la tondeuse depuis l'onglet Découverte. Ce n'est pas l'intégration gladys-automower (cloud Husqvarna, sans module). Jamais testé avec un vrai appareil. Sans lien avec Robonect."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-robonect/blob/main/docs/fr.md",
+          "label": {
+            "en": "Guide (French)",
+            "fr": "Guide (français)"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-robonect/blob/main/docs/en.md",
+          "label": {
+            "en": "Guide (English)",
+            "fr": "Guide (anglais)"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "host",
+      "type": "string",
+      "label": {
+        "en": "IP address of the Robonect module",
+        "fr": "Adresse IP du module Robonect"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "An IPv4 address or a host name, optionally followed by a port (80 by default). Plain HTTP on the local network.",
+        "fr": "Une adresse IPv4 ou un nom d'hôte, éventuellement suivi d'un port (80 par défaut). HTTP simple sur le réseau local."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
+      "placeholder": {
+        "en": "192.168.1.70",
+        "fr": "192.168.1.70"
+      },
       "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "default": ""
     },
     {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
-      "required": false,
-      "default": "celsius",
-      "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
-      ]
-    },
-    {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "username",
+      "type": "string",
+      "label": {
+        "en": "User name of the module",
+        "fr": "Nom d'utilisateur du module"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "The user of the web interface of the Robonect module. Leave it empty, with the password, only if the module has no login.",
+        "fr": "L'utilisateur de l'interface web du module Robonect. Laissez-le vide, avec le mot de passe, seulement si le module n'a pas de connexion."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
+      "default": ""
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": {
+        "en": "Password of the module",
+        "fr": "Mot de passe du module"
+      },
+      "description": {
+        "en": "Kept by Gladys in its database, never shown again, sent only to the module, in clear (HTTP Basic authentication) on the local network. Refused credentials are tried again after 15 min, 1 h, then every 6 h.",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement au module, en clair (authentification HTTP Basic) sur le réseau local. Des identifiants refusés sont réessayés après 15 min, 1 h, puis toutes les 6 h."
+      },
+      "required": false
+    },
+    {
+      "key": "allow_start",
+      "type": "boolean",
+      "label": {
+        "en": "Allow the start from Gladys",
+        "fr": "Autoriser le démarrage depuis Gladys"
+      },
+      "description": {
+        "en": "Off by default. On: the \"Start\" button may lift the stop of the mower, which then mows according to its mode (check that nobody, child or pet, is on the lawn). Off: it refuses every press. Pause and back to the base always work.",
+        "fr": "Désactivé par défaut. Activé : le bouton « Démarrer » peut lever l'arrêt de la tondeuse, qui tond alors selon son mode (vérifiez que personne, enfant ou animal, n'est sur la pelouse). Désactivé : il refuse tout appui. La pause et le retour à la base fonctionnent toujours."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "poll_interval",
+      "type": "number",
+      "label": {
+        "en": "Refresh interval (s)",
+        "fr": "Intervalle de rafraîchissement (s)"
+      },
+      "description": {
+        "en": "How often the module is read, in seconds (never more often, even after a restart).",
+        "fr": "Fréquence de lecture du module, en secondes (jamais plus souvent, même après un redémarrage)."
+      },
+      "required": false,
+      "default": 60,
+      "min": 30,
       "max": 3600
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the feature names",
+        "fr": "Langue des noms des fonctionnalités"
+      },
+      "description": {
+        "en": "Used for the feature names of the devices added from now on, for the status texts and for the command errors.",
+        "fr": "Sert aux noms des fonctionnalités des appareils ajoutés désormais, aux textes d'état et aux erreurs des commandes."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion"
+      },
+      "description": {
+        "en": "Reads the mower once, unless it was read less than one interval ago (then shows that read).",
+        "fr": "Lit la tondeuse une fois, sauf si elle a été lue il y a moins d'un intervalle (affiche alors cette lecture)."
+      },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
-    }
-  ],
-  "scene_triggers": [
-    {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
-      },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
-      "variables": [
-        {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
-        }
-      ]
-    }
-  ],
-  "scene_actions": [
-    {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
-      },
-      "timeout_seconds": 15,
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
-        {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
-        }
-      ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
     }
   ]
 }

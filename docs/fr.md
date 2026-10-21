@@ -1,67 +1,93 @@
-# Template de démonstration
+# Robonect pour Gladys
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Cette intégration affiche dans Gladys une **tondeuse robot équipée d'un module
+Robonect** (Husqvarna Automower, Gardena, Flymo, McCulloch), par l'API JSON
+locale du module, sans cloud. **Jamais testé avec un vrai appareil.** Sans
+lien avec Robonect, Husqvarna, Gardena ni Flymo.
+
+> **Ce n'est pas l'intégration gladys-automower.** gladys-automower passe par
+> le cloud Husqvarna (compte Husqvarna, robots Automower connectés). Celle-ci
+> parle directement au module Robonect, une carte ajoutée dans la tondeuse,
+> sur votre réseau local. Si votre tondeuse n'a pas de module Robonect, elle
+> ne vous servira pas.
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Une tondeuse dans l'onglet Découverte, avec :
+
+- **État de la tondeuse** (carte « aspirateur robot » de Gladys : tond, en
+  pause, retourne à la base, en charge, à la base, erreur, arrêtée) et un
+  bouton **Retour à la base** sur cette carte ;
+- **Statut** en texte (« Tond », « En charge », « Tond (arrêtée) »…), code de
+  statut, **mode** (Auto, Manuel, Maison, Fin de journée…), arrêtée (pause) ;
+- **batterie**, en charge ;
+- **erreur en cours**, code et texte de l'erreur ;
+- durée dans le statut, **heures de tonte**, distance de la base, qualité des
+  lames, signal Wi-Fi (dBm), température et humidité dans la tondeuse,
+  prochain départ du minuteur, module joignable ;
+- trois boutons : **Pause** (arrêt sur place), **Retour à la base** et
+  **Démarrer** (lever l'arrêt).
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+1. Donnez au module Robonect une **adresse IP fixe** dans votre box.
+2. Dans Gladys, ouvrez l'intégration Robonect et saisissez l'adresse IP du
+   module, son **nom d'utilisateur** et son **mot de passe** (ceux de son
+   interface web). Laissez les deux vides seulement si le module n'a pas de
+   connexion.
+3. Enregistrez, puis ajoutez la tondeuse depuis l'onglet **Découverte**.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+Le mot de passe est gardé par Gladys dans sa base, jamais réaffiché, envoyé
+seulement au module. Il passe **en clair** (authentification HTTP Basic, en
+HTTP) sur votre réseau local : c'est ainsi que le module fonctionne. Il n'est
+jamais écrit dans les journaux ni dans `/data`.
 
-## Actions
+Le module est lu toutes les 60 s (réglable de 30 s à 1 h), **jamais plus
+souvent**, même après un redémarrage de l'intégration, une reconnexion à
+Gladys, le bouton « Tester la connexion » ou un scan de la Découverte. Seule
+la commande `status`, qui ne réveille pas un module en veille, est envoyée
+pour ces lectures.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+## Les commandes
 
-## Scènes
+- **Pause** (arrêt sur place, la commande `stop` de Robonect) et **Retour à
+  la base** (mode « Maison ») sont **toujours disponibles** : jamais
+  bloquées par l'option, par un démarrage en cours, par une pause de
+  l'intégration (HTTP 429 ou 5xx) ni par des identifiants refusés, et
+  possibles juste après un redémarrage, avant la première lecture. Elles
+  annulent un démarrage pas encore parti.
+- **Démarrer** est **désactivé par défaut**. Activez « Autoriser le démarrage
+  depuis Gladys » pour l'utiliser. Il lève l'arrêt de la tondeuse, qui tond
+  alors **selon son mode** (en Auto : selon son minuteur ; en Maison : elle
+  reste à la base). Avant de partir, l'intégration relit l'état de la
+  tondeuse et refuse si le module ne répond pas assez vite, si une valeur
+  manque, si la tondeuse est en erreur ou éteinte, ou si un autre module
+  répond à cette adresse. **Vérifiez que personne, enfant ou animal, n'est
+  sur la pelouse.**
+- Aucune commande n'est un interrupteur : un « tout allumer / tout éteindre »
+  (assistants vocaux, scènes) ne peut pas démarrer la tondeuse.
+- Si le module ne répond pas à temps, la réponse est « Commande envoyée, sans
+  confirmation » : vérifiez l'état quelques secondes plus tard. Une pause
+  envoyée alors qu'un démarrage pouvait encore arriver est renvoyée si la
+  tondeuse repart (deux fois au plus, dans les deux minutes).
+- Retour à la base change le mode ; si la tondeuse était en pause (arrêtée),
+  il est possible qu'elle reste sur place tant que l'arrêt n'est pas levé :
+  comportement à vérifier sur un vrai module.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## En cas de problème
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+- « Pas de réponse » : vérifiez l'adresse, et que le module est sur le Wi-Fi
+  (il peut être hors de portée au fond du jardin). Nouveaux essais espacés de
+  1 à 15 minutes.
+- « Identifiants refusés » : corrigez le nom d'utilisateur ou le mot de passe
+  et enregistrez. Sinon, nouvel essai après 15 min, 1 h, puis toutes les 6 h,
+  même après un redémarrage.
+- « Plus lue » : un autre module répond à cette adresse (adresse IP
+  réattribuée), ou la tondeuse a été retirée.
 
-## Tableau de bord
+## Limites
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
-
-## Dépannage
-
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- Une seule tondeuse par intégration ; HTTP seulement (pas de HTTPS).
+- Pas de minuteurs, de choix du mode, de GPS ni de MQTT dans cette version.
+- Jamais testé avec un vrai appareil : les champs viennent de la bibliothèque
+  aiorobonect et de l'intégration Robonect de Home Assistant.

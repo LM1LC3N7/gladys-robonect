@@ -1,61 +1,89 @@
-# Demo Devices Template
+# Robonect for Gladys
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+This integration shows a **robotic mower fitted with a Robonect module**
+(Husqvarna Automower, Gardena, Flymo, McCulloch) in Gladys, through the local
+JSON API of the module, without any cloud. **Never tested with a real
+device.** Not affiliated with Robonect, Husqvarna, Gardena nor Flymo.
+
+> **This is not the gladys-automower integration.** gladys-automower goes
+> through the Husqvarna cloud (Husqvarna account, connected Automower
+> robots). This one talks directly to the Robonect module, a board added
+> inside the mower, on your local network. If your mower has no Robonect
+> module, it is of no use to you.
 
 ## What you get
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+One mower in the Discovery tab, with:
 
-## Configuration
+- **Mower state** (Gladys' "robot vacuum" card: mowing, paused, returning to
+  the base, charging, docked, error, stopped) and a **Return to the base**
+  button on that card;
+- **Status** as text ("Mowing", "Charging", "Mowing (stopped)"...), status
+  code, **mode** (Auto, Manual, Home, End of day...), stopped (paused);
+- **battery**, charging;
+- **error in progress**, error code and text;
+- time in the status, **mowing hours**, distance from the base, blade
+  quality, Wi-Fi signal (dBm), temperature and humidity inside the mower,
+  next start of the timer, module reachable;
+- three buttons: **Pause** (stop where it is), **Back to the base** and
+  **Start** (lift the stop).
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+## Setup
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+1. Give the Robonect module a **fixed IP address** in your router.
+2. In Gladys, open the Robonect integration and enter the IP address of the
+   module, its **user name** and **password** (those of its web interface).
+   Leave both empty only if the module has no login.
+3. Save, then add the mower from the **Discovery** tab.
 
-## Actions
+The password is kept by Gladys in its database, never shown again, sent only
+to the module. It travels **in clear** (HTTP Basic authentication, over
+HTTP) on your local network: that is how the module works. It is never
+written to the logs nor to `/data`.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+The module is read every 60 s (30 s to 1 h), **never more often**, even after
+a restart of the integration, a reconnection to Gladys, the "Test the
+connection" button or a Discovery scan. Only the `status` command, which
+does not wake a sleeping module, is sent for these reads.
 
-## Scenes
+## The commands
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
-
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
-
-## Dashboard
-
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+- **Pause** (stop where it is, Robonect's `stop` command) and **Back to the
+  base** ("Home" mode) are **always available**: never held back by the
+  option, a start in progress, a pause of the integration (HTTP 429 or 5xx)
+  or refused credentials, and possible right after a restart, before the
+  first read. They cancel a start not sent yet.
+- **Start** is **off by default**. Turn on "Allow the start from Gladys" to
+  use it. It lifts the stop of the mower, which then mows **according to its
+  mode** (Auto: following its timer; Home: it stays at the base). Before
+  sending, the integration reads the mower again and refuses if the module
+  does not answer fast enough, a value is missing, the mower is in error or
+  switched off, or another module answers at this address. **Check that
+  nobody, child or pet, is on the lawn.**
+- No command is a switch: a "turn everything on/off" (voice assistants,
+  scenes) can never start the mower.
+- If the module does not answer in time, the answer is "Command sent,
+  without confirmation": check the state a few seconds later. A pause sent
+  while a start could still land is sent again if the mower runs again
+  (twice at most, within two minutes).
+- Back to the base changes the mode; if the mower was paused (stopped), it
+  may stay where it is until the stop is lifted: to be checked on a real
+  module.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- "No answer": check the address, and that the module is on the Wi-Fi (it
+  may be out of range at the far end of the garden). New tries 1 to 15
+  minutes apart.
+- "Credentials refused": fix the user name or the password and save.
+  Otherwise, new try after 15 min, 1 h, then every 6 h, even after a
+  restart.
+- "Not read any more": another module answers at this address (IP address
+  given to another device), or the mower was removed.
+
+## Limits
+
+- One mower per integration; HTTP only (no HTTPS).
+- No timers, mode choice, GPS nor MQTT in this version.
+- Never tested with a real device: the fields come from the aiorobonect
+  library and the Robonect integration for Home Assistant.
