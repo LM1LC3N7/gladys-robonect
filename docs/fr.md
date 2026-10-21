@@ -88,7 +88,9 @@ pour ces lectures.
 - **La tondeuse n'apparaît pas dans la Découverte** (« sans identifiant
   valable ») : l'intégration identifie le module par le champ `id` de sa
   réponse `status` (les « : » et « - » sont retirés, par exemple pour une
-  adresse MAC), sinon, une fois, par le numéro de série de `cmd=version`.
+  adresse MAC), sinon par le numéro de série de `cmd=version` (réessayé
+  après 15 min, 1 h, puis toutes les 6 h s'il est illisible, ou par le
+  bouton « Tester la connexion »).
   Si cela ne suffit pas, ouvrez un ticket sur le dépôt GitHub avec la réponse
   anonymisée de `http://<module>/json?cmd=status`.
 - `https://` dans l'adresse est refusé : cette version parle seulement HTTP

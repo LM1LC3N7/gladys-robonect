@@ -160,7 +160,10 @@ export class RobonectApp {
       this.config.address && serial?.address === addressKey(this.config.address)
         ? serial.id
         : undefined;
-    this.versionTried = false;
+    // cmd=version: when it may be tried again, how many failures, the last reason.
+    this.versionRetryAt = -Infinity;
+    this.versionFailures = 0;
+    this.versionError = undefined;
     this.published = undefined;
     this.badge = undefined;
     this.lastStatus = undefined;
@@ -300,6 +303,7 @@ export class RobonectApp {
   }
 
   async saveMemory() {
+    this.dirty = false;
     await this.store
       .save(this.memory)
       .catch((err) => this.logger.warn(`Saving the state to /data failed: ${err.message}`));
@@ -380,14 +384,17 @@ export class RobonectApp {
     return m.running;
   }
 
-  /** Keeps the time of this read; in /data at most once a minute. */
-  async noteAttempt() {
+  /**
+   * Keeps the time of this read; in /data at most once a minute, with the
+   * last good read, in the one write of the read (end of run).
+   */
+  noteAttempt() {
     const now = this.now();
     this.lastAttemptAt = now;
     const stored = this.memory.lastAttemptAt;
     if (stored === null || now - stored >= TIMINGS.attemptWriteEvery) {
       this.memory.lastAttemptAt = now;
-      await this.saveMemory();
+      this.dirty = true;
     }
   }
 
@@ -400,10 +407,7 @@ export class RobonectApp {
     }
     let delay;
     const startedAt = this.now();
-    await this.noteAttempt();
-    if (generation !== this.generation) {
-      return;
-    }
+    this.noteAttempt();
     try {
       const read = await this.client.status(this.config.address, this.config.auth, {
         timeoutMs: TIMINGS.readTimeout,
@@ -420,12 +424,12 @@ export class RobonectApp {
         this.logger.debug('Robonect: read begun before a command, not applied');
       } else {
         this.applyRead(status);
-        await this.saveMowerId();
-        await this.saveLastGood();
+        this.rememberMowerId();
+        this.rememberLastGood();
         if (this.memory.block) {
           // Accepted: the fingerprint of the refused credentials goes with the block.
           this.memory.block = null;
-          await this.saveMemory();
+          this.dirty = true;
         }
       }
     } catch (err) {
@@ -436,6 +440,10 @@ export class RobonectApp {
       if (generation !== this.generation) {
         return;
       }
+    }
+    if (this.dirty) {
+      // The one write of this read (a pause or a block may already have written it all).
+      await this.saveMemory();
     }
     await this.publishAll();
     if (generation === this.generation) {
@@ -452,25 +460,71 @@ export class RobonectApp {
     if (status.id) {
       return status;
     }
-    if (!this.serialId && !this.versionTried) {
-      this.versionTried = true;
+    if (!this.serialId && this.now() >= this.versionRetryAt) {
+      let id;
+      let failure;
       try {
-        const id = await this.client.version(this.config.address, this.config.auth, {
+        id = await this.client.version(this.config.address, this.config.auth, {
           timeoutMs: TIMINGS.readTimeout,
         });
-        if (generation !== this.generation) {
-          return status;
-        }
-        if (id) {
-          this.serialId = id;
-          this.memory.serial = { address: addressKey(this.config.address), id };
-          await this.saveMemory();
-        }
       } catch (err) {
-        this.logger.warn(`Robonect: no id in the status, version unreadable (${errorReason(err)})`);
+        failure = err;
+      }
+      if (generation !== this.generation) {
+        return status;
+      }
+      if (id) {
+        this.serialId = id;
+        this.versionFailures = 0;
+        this.versionError = undefined;
+        this.versionRetryAt = -Infinity;
+        this.memory.serial = { address: addressKey(this.config.address), id };
+        this.dirty = true;
+      } else {
+        await this.versionFailed(failure);
       }
     }
     return this.withSerial(status);
+  }
+
+  /**
+   * cmd=version gave no serial: tried again after 15 min, 1 h, then every
+   * 6 h, never sooner than the interval. A 429 or a 5xx also pauses every
+   * read (kept in /data), as on the status.
+   */
+  async versionFailed(err) {
+    const reason = err ? errorReason(err) : word(both('no serial', 'pas de numéro'), 'en');
+    this.versionFailures += 1;
+    const backoff = TIMINGS.versionBackoff;
+    const wait = Math.max(
+      this.interval,
+      backoff[Math.min(this.versionFailures - 1, backoff.length - 1)],
+    );
+    this.versionRetryAt = this.now() + wait;
+    this.versionError = reason;
+    if (err?.kind === ERROR_KINDS.RATE_LIMITED) {
+      await this.pause(err);
+    } else if (err?.kind === ERROR_KINDS.HTTP && err.status >= 500) {
+      this.pausedUntil = Math.max(this.pausedUntil, this.now() + this.interval);
+      this.memory.pause = { until: this.pausedUntil, reason: '5xx' };
+      this.dirty = true;
+    }
+    this.logger.warn(
+      `Robonect: no id in the status, version unreadable (${reason}); next try in ${Math.round(wait / 60000)} min`,
+    );
+  }
+
+  /**
+   * Another serial read before a start: the one kept is forgotten (memory and
+   * /data), so the next read identifies the module again (never the other
+   * module's state on the device of the first one past that read).
+   */
+  async forgetSerial() {
+    this.serialId = undefined;
+    this.versionRetryAt = -Infinity;
+    this.versionFailures = 0;
+    this.memory.serial = null;
+    await this.saveMemory();
   }
 
   /** A status without id, given the serial kept (not checked by this read), else as is. */
@@ -480,14 +534,10 @@ export class RobonectApp {
       : status;
   }
 
-  /** The summary of a good read, kept in /data at most once a minute (shown after a restart). */
-  async saveLastGood() {
+  /** The summary of a good read, in memory (written with the time of the read, shown after a restart). */
+  rememberLastGood() {
     const m = this.mower;
-    const kept = this.memory.lastGood;
     if (!m.data || !this.config.address) {
-      return;
-    }
-    if (kept && this.now() - kept.at < TIMINGS.attemptWriteEvery) {
       return;
     }
     this.memory.lastGood = {
@@ -495,7 +545,6 @@ export class RobonectApp {
       at: this.now(),
       summary: summaryOf(m.data),
     };
-    await this.saveMemory();
   }
 
   /** A status read: the mower as read (its id checked), and the pause it may reaffirm. */
@@ -520,8 +569,8 @@ export class RobonectApp {
     this.observe(status, { fromCommand });
   }
 
-  /** Keeps in /data the id read at this address, when it changed. */
-  async saveMowerId() {
+  /** Keeps (for /data) the id read at this address, when it changed. */
+  rememberMowerId() {
     const m = this.mower;
     if (!m.id || m.readAt === -Infinity || !this.config.address) {
       return;
@@ -532,7 +581,7 @@ export class RobonectApp {
       return;
     }
     this.memory.mower = { address, id: m.id };
-    await this.saveMemory();
+    this.dirty = true;
   }
 
   /** A failed read: the delay before the next one. */
@@ -637,6 +686,12 @@ export class RobonectApp {
         ];
       }
       return [false, m.timer ? T.waiting(age(Math.max(0, this.due - this.now()))) : T.connecting];
+    }
+    if (m.error === 'no_id' && this.versionError && !this.serialId) {
+      return [
+        false,
+        T.serialUnreadable(this.versionError, age(Math.max(0, this.versionRetryAt - this.now()))),
+      ];
     }
     if (m.error === 'no_id' || !m.data) {
       return [false, join(T.noId, T.noIdHelp)];
@@ -844,7 +899,8 @@ export class RobonectApp {
     }
     const m = this.mower;
     if (!this.serialId) {
-      this.versionTried = false;
+      // The button allows one more cmd=version at the read it makes.
+      this.versionRetryAt = -Infinity;
     }
     const current = () => JSON.parse(this.lastStatus ?? '[false,null]')[1] ?? this.status()[1];
     if (m.running) {
@@ -1009,6 +1065,7 @@ export class RobonectApp {
         throw this.refusal(ERRORS.missing);
       }
       if (serial !== id) {
+        await this.forgetSerial();
         throw this.refusal(ERRORS.otherModule);
       }
     }

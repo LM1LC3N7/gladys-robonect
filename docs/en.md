@@ -85,7 +85,8 @@ does not wake a sleeping module, is sent for these reads.
 - **The mower does not show up in Discovery** ("without a valid id"): the
   integration identifies the module by the `id` field of its `status`
   answer (":" and "-" removed, for a MAC address for instance), otherwise,
-  once, by the serial number of `cmd=version`. If that is not enough, open
+  by the serial number of `cmd=version` (tried again after 15 min, 1 h,
+  then every 6 h when unreadable, or with the "Test the connection" button). If that is not enough, open
   an issue on the GitHub repository with the anonymized answer of
   `http://<module>/json?cmd=status`.
 - `https://` in the address is refused: this version speaks plain HTTP only

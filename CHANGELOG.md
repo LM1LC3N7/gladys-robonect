@@ -42,5 +42,9 @@ the notes of the version's GitHub Release.
   message; a block without credentials lifted once credentials are typed;
   "connected" right after a restart from the last good read; the error code
   only from the error of the module.
+- A module without id whose serial number could not be read is tried again
+  after 15 min, 1 h, then every 6 h (a 429/5xx pauses the reads), with a
+  status saying so; another serial seen before a start is forgotten so the
+  next read identifies the module again; one write to `/data` per read.
 - "Test the connection" button; documentation in English and French;
   `LICENSE` and `THIRD_PARTY_NOTICES.md` shipped in the image.

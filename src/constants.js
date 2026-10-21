@@ -171,6 +171,8 @@ export const TIMINGS = {
   commandReadMax: 2_000,
   commandMinRead: 300,
   commandMinSend: 300,
+  /** cmd=version failed (no id in the status): new tries 15 min, 1 h, then every 6 h. */
+  versionBackoff: [15 * MINUTE, HOUR, 6 * HOUR],
   /** A pause or a home skips its identity read when the module was read this recently. */
   protectReadFresh: 10 * SECOND,
   /** After a restart, the last good read kept in /data shows "connected" while waiting. */

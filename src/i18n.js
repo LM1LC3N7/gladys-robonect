@@ -154,6 +154,11 @@ export const T = {
       `Plus lue : ${names} (un autre module répond à cette adresse, ou elle a été retirée).`,
     ),
   lastRead: (ago) => both(`Last read ${ago.en} ago.`, `Dernière lecture il y a ${ago.fr}.`),
+  serialUnreadable: (reason, wait) =>
+    both(
+      `The module gives no id and its serial number could not be read (${reason}): next try in ${wait.en}, or press "Test the connection".`,
+      `Le module ne donne pas d'identifiant et son numéro de série n'a pas pu être lu (${reason}) : nouvel essai dans ${wait.fr}, ou bouton « Tester la connexion ».`,
+    ),
   noIdHelp: both(
     'If the mower never shows up, open an issue on the GitHub repository with the anonymized answer of http://<module>/json?cmd=status.',
     "Si la tondeuse n'apparaît jamais, ouvrez un ticket sur le dépôt GitHub avec la réponse anonymisée de http://<module>/json?cmd=status.",

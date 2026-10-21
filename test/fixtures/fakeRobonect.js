@@ -97,6 +97,15 @@ export function fakeModule(over = {}) {
         throw new RobonectError(ERROR_KINDS.LATE, 'Too late to send');
       }
       if (cmd === 'version') {
+        // `versionFails`: the next answers, consumed one per call ('timeout' or an HTTP status).
+        const fail = mower.versionFails?.shift();
+        if (fail === 'timeout') {
+          // Failed at once (the mocked clock does not run during the first read).
+          throw new RobonectError(ERROR_KINDS.TIMEOUT, 'Connected but silent: timeout');
+        }
+        if (fail) {
+          return answer(fail, 'error', mower.headers);
+        }
         if (headers.Authorization !== basic(mower.user, mower.password)) {
           return answer(401, 'Unauthorized');
         }

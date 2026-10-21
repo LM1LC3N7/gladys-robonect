@@ -219,3 +219,76 @@ test('M9: after a restart, connected from the last good read kept, before the ne
   assert.equal(status.connected, true);
   assert.match(JSON.stringify(status), /En charge|Charging/);
 });
+
+// --- Review 2 (R-A, R-B, R-C) -----------------------------------------------------
+
+const noIdModule = (over = {}) => {
+  const body = statusBody();
+  delete body.id;
+  return fakeModule({ status: body, serial: 'RN-0042-77', ...over });
+};
+
+test('R-A (R3): cmd=version failed: tried again after 15 min (never sooner), then the mower is added', async (t) => {
+  const server = noIdModule({ versionFails: ['timeout'] });
+  const ctx = await setup(t, { server, create: false });
+  await ctx.advance(15 * SECOND);
+  assert.equal(ctx.gladys.fake.discoveredDevices.length, 0);
+  assert.match(
+    JSON.stringify(ctx.gladys.fake.connectionStatus),
+    /numéro de série n'a pas pu être lu/,
+  );
+  assert.doesNotMatch(JSON.stringify(ctx.gladys.fake.connectionStatus), /ticket/);
+  await ctx.advance(10 * MINUTE);
+  assert.equal(versionReads(server), 1, 'no new try before 15 min');
+  await ctx.advance(6 * MINUTE);
+  assert.equal(versionReads(server), 2, 'one new try after 15 min');
+  assert.equal(ctx.gladys.fake.discoveredDevices[0].external_id, deviceOf('rn004277'));
+});
+
+test('R-A: failures spaced 15 min, 1 h, then 6 h', async (t) => {
+  const server = noIdModule({ versionFails: [500, 500, 500, 500] });
+  const ctx = await setup(t, { server, create: false });
+  await ctx.advance(16 * MINUTE, 1000);
+  assert.equal(versionReads(server), 2);
+  await ctx.advance(50 * MINUTE, 1000);
+  assert.equal(versionReads(server), 2, 'the second wait is 1 h');
+  await ctx.advance(12 * MINUTE, 1000);
+  assert.equal(versionReads(server), 3);
+});
+
+test('R-A (R9): a 429 on cmd=version pauses the reads, kept in /data', async (t) => {
+  const server = noIdModule({ versionFails: [429], headers: { 'retry-after': '600' } });
+  const ctx = await setup(t, { server, create: false });
+  assert.ok(ctx.store.data.pause.until > Date.now());
+  assert.equal(ctx.store.data.pause.reason, '429');
+  const reads = server.reads();
+  await ctx.advance(5 * MINUTE, 1000);
+  assert.equal(server.reads(), reads, 'no read during the pause');
+});
+
+test('R-B (R2): another serial before a start: forgotten, the next read identifies again', async (t) => {
+  const server = noIdModule();
+  const ctx = await setup(t, { server, config: START_CFG });
+  const first = deviceOf('rn004277');
+  assert.equal(ctx.gladys.fake.discoveredDevices[0].external_id, first);
+  server.mower.serial = 'OTHER-1';
+  ctx.mower.status.status.stopped = true;
+  ctx.mower.status.name = 'Other';
+  assert.equal((await ctx.press('start')).success, false);
+  assert.equal(ctx.store.data.serial, null, 'forgotten in /data');
+  await ctx.advance(61 * SECOND);
+  assert.equal(ctx.gladys.fake.discoveredDevices[0].external_id, deviceOf('other1'));
+  const badge = ctx.gladys.fake.transports.at(-1);
+  assert.equal(badge.device_external_id ?? badge.external_id, first);
+  assert.equal(badge.transport, 'unreachable', 'the first device is no longer read');
+  assert.deepEqual(ctx.server.commands(), []);
+});
+
+test('R-C (R4): one write to /data per read at most, at most once a minute', async (t) => {
+  const store = memoryStore();
+  const ctx = await setup(t, { store });
+  const saves = store.saves;
+  await ctx.advance(10 * MINUTE, 1000);
+  assert.ok(store.saves - saves <= 10, `${store.saves - saves} writes in 10 min`);
+  assert.ok(store.data.lastGood, 'the last good read is written');
+});

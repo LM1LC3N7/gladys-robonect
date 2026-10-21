@@ -29,6 +29,9 @@ up to date at the end of every milestone.
       (I1), id rule without ":" and "-" and the cmd=version serial when the
       status has no id (I2), M1-M9 (see Decisions). Tests in
       `test/review1.test.js`.
+- [x] **Review 2 fixes** (2026-10-21): cmd=version tried again, spaced and
+      bounded (R-A), another serial before a start forgotten (R-B), one write
+      to /data per read (R-C). Tests "Review 2" in `test/review1.test.js`.
 - [ ] **Milestone 2 — real module**: run against a real Robonect (see "To
       check"), turn the answers (anonymized) into fixtures.
 - [ ] **Milestone 3 — more**: mode select (Auto, Manual, End of day) behind
@@ -65,11 +68,22 @@ up to date at the end of every milestone.
   trimmed, ":" and "-" removed (a MAC `00:1A:2B:3C:4D:5E` gives
   `001a2b3c4d5e`), lower case, 1-64 of [0-9a-z_.]. When the status has no
   id (openHAB's fixtures of 2017 firmwares have none), the `serial` of
-  `cmd=version` (Home Assistant's identity) is read once per start (and
-  again after the test button), kept in `/data` with the address, and read
+  `cmd=version` (Home Assistant's identity) is read at the first read
+  without id; when it fails it is tried again after 15 min, 1 h, then every
+  6 h, never sooner than the interval (the test button allows one more try
+  at its read); a 429 or a 5xx on it pauses every read like on the status
+  (kept in /data); a 401 on it only spaces its tries (the status was just
+  accepted with the same credentials: never a block nor a loop). The status
+  then says "serial number unreadable (reason), next try in X, or Test the
+  connection". Once read, it is kept in `/data` with the address, and read
   again before every start (which wakes the module anyway); never at every
   poll (`version` wakes a sleeping module). An answer without any id is
-  never "another module": nothing is applied, the status says so and asks
+  never "another module". Without `id`, the identity is checked again only
+  before a start (the reads attach the serial kept): when the start reads
+  another serial, it is refused and the serial is forgotten in memory and in
+  /data, so the next read identifies the module again (the first device is
+  then "not read any more", never fed the other module's state past that
+  read). Without any id: nothing is applied, the status says so and asks
   for an issue with the anonymized `/json?cmd=status`; the start refuses
   it, a protective command still goes.
 - **Commands as buttons**: start, pause, home are `button/push`; the
@@ -115,6 +129,10 @@ up to date at the end of every milestone.
   status says "connected" with the summary of the last good read kept in
   `/data` (same address, less than 2 h old, written at most once a minute);
   the wait in memory is capped at the interval (a clock set back).
+- **One write to /data per read**: the time of the read (at most once a
+  minute), the last good read, the id read, the block lifted are set in
+  memory and written together at the end of the read; a pause or a block
+  already written in the read covers them.
 - **Deadline before writing**: `src/robonect/http.js` opens the TCP
   connection first and writes the request only if the deadline has not
   passed, so a slow connection never sends a start late.
