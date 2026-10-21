@@ -63,17 +63,29 @@ export function memoryStore(initial = null) {
 const object = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const HEX = /^[0-9a-f]{32,64}$/;
+const place = (value) =>
+  typeof value.address === 'string' && value.address.length > 0 && value.address.length <= 300;
+/** A text read back from /data: bounded, without control characters, else undefined. */
+const cleanText = (value) =>
+  // eslint-disable-next-line no-control-regex
+  typeof value === 'string' && value.length <= 300 && !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : undefined;
 
 /**
  * The persisted state, repaired and bounded:
  * `{ pause: { until, reason } | null, block: { until, failures, salt, refused } | null,
- *   mower: { address, id } | null, lastAttemptAt: number | null }`.
+ *   mower: { address, id } | null, serial: { address, id } | null,
+ *   lastAttemptAt: number | null, lastGood: { address, at, summary: { en, fr } } | null }`.
  */
 export function normalizeMemory(raw, now) {
   const data = object(raw);
   const pause = object(data.pause);
   const block = object(data.block);
   const mower = object(data.mower);
+  const serial = object(data.serial);
+  const good = object(data.lastGood);
+  const summary = object(good.summary);
   const failures = Number.isInteger(block.failures) && block.failures > 0 ? block.failures : 1;
   return {
     pause:
@@ -100,6 +112,20 @@ export function normalizeMemory(raw, now) {
       mower.address.length <= 300 &&
       idOf(mower.id) === mower.id
         ? { address: mower.address, id: mower.id }
+        : null,
+    // The serial read with cmd=version at an address whose status has no id.
+    serial:
+      place(serial) && idOf(serial.id) === serial.id
+        ? { address: serial.address, id: serial.id }
+        : null,
+    // The summary of the last good read (shown "connected" while the first read after a restart waits).
+    lastGood:
+      place(good) && Number.isFinite(good.at) && cleanText(summary.en) && cleanText(summary.fr)
+        ? {
+            address: good.address,
+            at: Math.min(good.at, now),
+            summary: { en: cleanText(summary.en), fr: cleanText(summary.fr) },
+          }
         : null,
     // A time in the future (a clock set back) counts as now: never a longer wait than the interval.
     lastAttemptAt: Number.isFinite(data.lastAttemptAt) ? Math.min(data.lastAttemptAt, now) : null,

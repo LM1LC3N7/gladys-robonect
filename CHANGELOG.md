@@ -31,5 +31,16 @@ the notes of the version's GitHub Release.
   last one, even after a restart; failures retried after 1 to 15 minutes; 429
   and 5xx pause, refused credentials block (15 min, 1 h, 6 h), all kept in
   `/data` without any secret.
+- The start only on known statuses (parked, mowing stopped, searching,
+  charging, sleeping, garage door): any other code refuses; "Start" with
+  nothing to lift answers a failure, not a success.
+- A module whose status id is a MAC (":" and "-" removed) or missing (the
+  serial of `cmd=version`, read once) can be added; the docs say what to
+  send when it still does not show up.
+- Pause never refused by a configuration saved during its read, no identity
+  read when the module was read in the last 10 s; `https://` refused with a
+  message; a block without credentials lifted once credentials are typed;
+  "connected" right after a restart from the last good read; the error code
+  only from the error of the module.
 - "Test the connection" button; documentation in English and French;
   `LICENSE` and `THIRD_PARTY_NOTICES.md` shipped in the image.

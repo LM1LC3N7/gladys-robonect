@@ -25,6 +25,10 @@ up to date at the end of every milestone.
       persisted; test button; docs en/fr; cover. Tested against made-up
       answers only. The store validator was not run by the dev session (it
       needs the real terminal).
+- [x] **Review 1 fixes** (2026-10-21): start on an allow list of statuses
+      (I1), id rule without ":" and "-" and the cmd=version serial when the
+      status has no id (I2), M1-M9 (see Decisions). Tests in
+      `test/review1.test.js`.
 - [ ] **Milestone 2 — real module**: run against a real Robonect (see "To
       check"), turn the answers (anonymized) into fixtures.
 - [ ] **Milestone 3 — more**: mode select (Auto, Manual, End of day) behind
@@ -57,18 +61,28 @@ up to date at the end of every milestone.
 - **Distinct from gladys-automower** (Husqvarna cloud API, no module): said
   in the manifest, README and both docs.
 - **Identity**: the `id` of the status answer, read at every poll and in the
-  fresh read of every command (no extra request: `version`, which carries a
-  serial, wakes the module). An answer without a valid id is never "another
-  module": nothing is applied, the status says so; the start refuses it, a
-  protective command still goes.
+  fresh read of every command. FROZEN RULE (it makes the external ids):
+  trimmed, ":" and "-" removed (a MAC `00:1A:2B:3C:4D:5E` gives
+  `001a2b3c4d5e`), lower case, 1-64 of [0-9a-z_.]. When the status has no
+  id (openHAB's fixtures of 2017 firmwares have none), the `serial` of
+  `cmd=version` (Home Assistant's identity) is read once per start (and
+  again after the test button), kept in `/data` with the address, and read
+  again before every start (which wakes the module anyway); never at every
+  poll (`version` wakes a sleeping module). An answer without any id is
+  never "another module": nothing is applied, the status says so and asks
+  for an issue with the anonymized `/json?cmd=status`; the start refuses
+  it, a protective command still goes.
 - **Commands as buttons**: start, pause, home are `button/push`; the
   vacuum-cleaner `dock` feature (needed by the card's "Return to dock"
   button) only ever sends "home", which protects. No run-mode select, no
   switch: a "turn everything on" never starts the mower.
 - **Start = `cmd=start`** (lifts the stop; the mower then follows its mode).
-  It is not sent when the fresh read shows the mower not stopped (nothing to
-  lift), unless a pause guard is active. Refused on status 0 (detecting), 7
-  (error), 8 (loop lost), 16 (off), on a missing status / stop flag /
+  It is not sent, and the ack is a failure ("nothing to lift", with the
+  mode), when the fresh read shows the mower not stopped, unless a pause
+  guard is active. Allow list of statuses: 1 parked, 2 mowing (stopped on
+  the lawn), 3 and 5 searching, 4 charging, 17 sleeping, 18 garage door; any
+  other code refuses (0, 7, 8, 16, 98 "offline, cannot bind", 99 unknown,
+  undocumented codes); refused too on a missing status / stop flag /
   battery, on another id, during a 429/5xx pause or a credential block,
   before the first read after a restart, when another start is in flight,
   when a pause or a home arrived meanwhile, and after 3.5 s.
@@ -76,7 +90,10 @@ up to date at the end of every milestone.
   blocked" (lot brief). They go during a pause or a block (one request, no
   fresh read), before the first read (the id kept in `/data` with its
   address), and their fresh read never holds them back when it fails; only a
-  read showing another id refuses them. Their ack waits 4.3 s at most, then
+  read showing another id refuses them. No identity read when the module
+  was read in the last 10 s (a scene pressing in a loop); a configuration
+  saved during their fresh read never refuses them (the id kept for the
+  address). Their ack waits 4.3 s at most, then
   "sent, without confirmation" while the request goes on (15 s at most).
 - **Home does not lift the stop**: it never sends `start`, whatever the
   state, so a protective path never sends the sensitive command. Unverified
@@ -86,6 +103,18 @@ up to date at the end of every milestone.
   minutes) is sent again when that start settles, and by the reads of the
   next two minutes if the mower runs again (twice at most), unless a newer
   start left. A failed resend keeps the reaffirmation (the guard).
+- **A start that never left** (late, unreachable) gives back the times of
+  the last request and start, so it never cuts the reaffirmation of a pause.
+- **Error code** only from the `error` object of the status (0 when no
+  error); never the status code.
+- **HTTPS refused**: an address typed with `https://` gives a fixed status
+  and sends nothing (never quietly turned into clear HTTP).
+- **A block kept without credentials** (`refused: null`) is lifted at the
+  start once credentials are configured.
+- **After a restart**, while the first read waits for the interval, the
+  status says "connected" with the summary of the last good read kept in
+  `/data` (same address, less than 2 h old, written at most once a minute);
+  the wait in memory is capped at the interval (a clock set back).
 - **Deadline before writing**: `src/robonect/http.js` opens the TCP
   connection first and writes the request only if the deadline has not
   passed, so a slow connection never sends a start late.

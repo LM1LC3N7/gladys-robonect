@@ -44,7 +44,7 @@ import {
   refusedFingerprint,
   usable,
 } from './config.js';
-import { COMMANDS, PRESSED, SECOND, STATUS, TIMINGS } from './constants.js';
+import { COMMANDS, PRESSED, SECOND, START_ALLOWED, TIMINGS } from './constants.js';
 import {
   COMMAND_OF,
   buildDevice,
@@ -53,7 +53,7 @@ import {
   parseDeviceId,
   parseFeatureId,
 } from './devices.js';
-import { ERRORS, T, age, statusText, summaryOf, word } from './i18n.js';
+import { ERRORS, MODE_NAMES, T, UNKNOWN_MODE, age, statusText, summaryOf, word } from './i18n.js';
 import { RobonectClient, errorReason } from './robonect/client.js';
 import { ERROR_KINDS } from './robonect/http.js';
 import { StatePublisher } from './publisher.js';
@@ -61,9 +61,6 @@ import { fileStore, normalizeMemory } from './store.js';
 
 const both = (en, fr) => ({ en, fr });
 const join = (a, b) => both(`${a.en} ${b.en}`, `${a.fr} ${b.fr}`);
-
-/** A status the start never lifts the stop on. */
-const NO_START = new Set([STATUS.DETECTING, STATUS.ERROR, STATUS.LOOP_LOST, STATUS.OFF]);
 
 const freshMower = () => ({
   id: undefined,
@@ -141,7 +138,13 @@ export class RobonectApp {
     }
     // Other credentials than the ones refused (changed while the container was down): no wait.
     const block = this.memory.block;
-    if (block?.refused && block.refused !== refusedFingerprint(this.config, block.salt)) {
+    // A block kept without credentials (refused: null) goes too once some are typed.
+    if (
+      block &&
+      (block.refused
+        ? block.refused !== refusedFingerprint(this.config, block.salt)
+        : Boolean(this.config.auth))
+    ) {
       this.memory.block = null;
       await this.saveMemory();
     }
@@ -151,6 +154,13 @@ export class RobonectApp {
     if (this.config.address && kept?.address === addressKey(this.config.address)) {
       this.mower.id = kept.id;
     }
+    // The serial read once (cmd=version) for a module whose status has no id.
+    const serial = this.memory.serial;
+    this.serialId =
+      this.config.address && serial?.address === addressKey(this.config.address)
+        ? serial.id
+        : undefined;
+    this.versionTried = false;
     this.published = undefined;
     this.badge = undefined;
     this.lastStatus = undefined;
@@ -231,6 +241,7 @@ export class RobonectApp {
       JSON.stringify(next.address ?? null) !== JSON.stringify(this.config.address ?? null) ||
       next.invalidHost !== this.config.invalidHost ||
       next.credentialsInHost !== this.config.credentialsInHost ||
+      next.httpsAsked !== this.config.httpsAsked ||
       next.authMissing !== this.config.authMissing ||
       next.badUser !== this.config.badUser ||
       next.badSecret !== this.config.badSecret ||
@@ -347,7 +358,8 @@ export class RobonectApp {
     } else {
       wait = delay ?? (m.online === false ? m.wait : this.interval);
     }
-    wait = Math.max(wait ?? this.interval, this.due - this.now(), 0);
+    // Capped at the interval: a clock set back never stops the reads.
+    wait = Math.max(wait ?? this.interval, Math.min(this.interval, this.due - this.now()), 0);
     const generation = this.generation;
     m.timer = this.timers.setTimeout(() => {
       m.timer = undefined;
@@ -393,9 +405,13 @@ export class RobonectApp {
       return;
     }
     try {
-      const status = await this.client.status(this.config.address, this.config.auth, {
+      const read = await this.client.status(this.config.address, this.config.auth, {
         timeoutMs: TIMINGS.readTimeout,
       });
+      if (generation !== this.generation) {
+        return;
+      }
+      const status = await this.identify(read, generation);
       if (generation !== this.generation) {
         return;
       }
@@ -405,6 +421,7 @@ export class RobonectApp {
       } else {
         this.applyRead(status);
         await this.saveMowerId();
+        await this.saveLastGood();
         if (this.memory.block) {
           // Accepted: the fingerprint of the refused credentials goes with the block.
           this.memory.block = null;
@@ -424,6 +441,61 @@ export class RobonectApp {
     if (generation === this.generation) {
       this.schedule(delay);
     }
+  }
+
+  /**
+   * The id of a status without one: the serial read with cmd=version, once
+   * per start (and again after the test button), kept in /data with the
+   * address. A status without id is never "another module".
+   */
+  async identify(status, generation) {
+    if (status.id) {
+      return status;
+    }
+    if (!this.serialId && !this.versionTried) {
+      this.versionTried = true;
+      try {
+        const id = await this.client.version(this.config.address, this.config.auth, {
+          timeoutMs: TIMINGS.readTimeout,
+        });
+        if (generation !== this.generation) {
+          return status;
+        }
+        if (id) {
+          this.serialId = id;
+          this.memory.serial = { address: addressKey(this.config.address), id };
+          await this.saveMemory();
+        }
+      } catch (err) {
+        this.logger.warn(`Robonect: no id in the status, version unreadable (${errorReason(err)})`);
+      }
+    }
+    return this.withSerial(status);
+  }
+
+  /** A status without id, given the serial kept (not checked by this read), else as is. */
+  withSerial(status) {
+    return !status.id && this.serialId
+      ? { ...status, id: this.serialId, idFromSerial: true }
+      : status;
+  }
+
+  /** The summary of a good read, kept in /data at most once a minute (shown after a restart). */
+  async saveLastGood() {
+    const m = this.mower;
+    const kept = this.memory.lastGood;
+    if (!m.data || !this.config.address) {
+      return;
+    }
+    if (kept && this.now() - kept.at < TIMINGS.attemptWriteEvery) {
+      return;
+    }
+    this.memory.lastGood = {
+      address: addressKey(this.config.address),
+      at: this.now(),
+      summary: summaryOf(m.data),
+    };
+    await this.saveMemory();
   }
 
   /** A status read: the mower as read (its id checked), and the pause it may reaffirm. */
@@ -520,6 +592,9 @@ export class RobonectApp {
     const m = this.mower;
     const c = this.config;
     if (!c.address) {
+      if (c.httpsAsked) {
+        return [false, T.https];
+      }
       if (c.credentialsInHost) {
         return [false, T.hostCredentials];
       }
@@ -548,10 +623,23 @@ export class RobonectApp {
       ];
     }
     if (m.online === undefined) {
+      const good = this.memory.lastGood;
+      if (
+        m.timer &&
+        good?.address === addressKey(c.address) &&
+        this.now() - good.at < TIMINGS.lastGoodMax
+      ) {
+        // After a restart: the last good read kept in /data, until the next read.
+        return [
+          true,
+          join(T.connected(good.summary), T.lastRead(age(this.now() - good.at))),
+          good.summary,
+        ];
+      }
       return [false, m.timer ? T.waiting(age(Math.max(0, this.due - this.now()))) : T.connecting];
     }
     if (m.error === 'no_id' || !m.data) {
-      return [false, T.noId];
+      return [false, join(T.noId, T.noIdHelp)];
     }
     const summary = summaryOf({ ...m.data, name: m.data.name });
     return [true, T.connected(summary), summary];
@@ -755,6 +843,9 @@ export class RobonectApp {
       return this.status()[1];
     }
     const m = this.mower;
+    if (!this.serialId) {
+      this.versionTried = false;
+    }
     const current = () => JSON.parse(this.lastStatus ?? '[false,null]')[1] ?? this.status()[1];
     if (m.running) {
       await m.running;
@@ -818,9 +909,9 @@ export class RobonectApp {
   async freshRead(budget) {
     const readStart = this.now();
     const generation = this.generation;
-    const status = await this.client.status(this.config.address, this.config.auth, {
-      timeoutMs: budget,
-    });
+    const status = this.withSerial(
+      await this.client.status(this.config.address, this.config.auth, { timeoutMs: budget }),
+    );
     if (generation === this.generation && readStart > this.lastSentAt && status.id) {
       if (status.id === this.mower.id || this.mower.id === undefined) {
         this.applyRead(status, { fromCommand: true });
@@ -900,15 +991,37 @@ export class RobonectApp {
     if (fresh.id !== id) {
       throw this.refusal(ERRORS.otherModule);
     }
+    if (fresh.idFromSerial) {
+      // No id in the status: the serial is read again (the start wakes the module anyway).
+      const left = Math.min(TIMINGS.commandReadMax, sendBy - TIMINGS.commandMinSend - this.now());
+      if (left < TIMINGS.commandMinRead) {
+        throw this.refusal(ERRORS.tooSlow);
+      }
+      let serial;
+      try {
+        serial = await this.client.version(this.config.address, this.config.auth, {
+          timeoutMs: left,
+        });
+      } catch (err) {
+        throw this.refusal(ERRORS.unknownState(errorReason(err)));
+      }
+      if (serial === undefined) {
+        throw this.refusal(ERRORS.missing);
+      }
+      if (serial !== id) {
+        throw this.refusal(ERRORS.otherModule);
+      }
+    }
     if (fresh.code === undefined || fresh.stopped === undefined || fresh.battery === undefined) {
       throw this.refusal(ERRORS.missing);
     }
-    if (NO_START.has(fresh.code)) {
+    if (!START_ALLOWED.has(fresh.code)) {
       throw this.refusal(ERRORS.cannotStart(statusText(fresh)));
     }
     if (fresh.stopped === false && !this.pauseGuardActive()) {
-      // No stop to lift: the mower already follows its mode. Nothing sent.
-      return;
+      // No stop to lift: the mower already follows its mode. Nothing sent, never "success".
+      this.logger.info('Robonect: start not sent (the mower is not stopped)');
+      throw this.refusal(ERRORS.notStopped(MODE_NAMES[fresh.mode] ?? UNKNOWN_MODE));
     }
     // The option may have been turned off, or a pause pressed, during the read.
     this.checkStart(generation, id, entry);
@@ -916,6 +1029,7 @@ export class RobonectApp {
       throw this.refusal(ERRORS.tooSlow);
     }
     const timeoutMs = Math.max(200, received + TIMINGS.commandAnswerBy - this.now());
+    const previous = { sentAt: this.lastSentAt, startAt: this.lastStartAt };
     this.lastSentAt = this.now();
     this.lastStartAt = this.now();
     entry.sentAt = this.now();
@@ -929,8 +1043,10 @@ export class RobonectApp {
       const reason = errorReason(err);
       this.logger.warn(`Robonect: start failed (${reason})`);
       if (err.kind === ERROR_KINDS.LATE || err.kind === ERROR_KINDS.UNREACHABLE || err.notSent) {
-        // Nothing left.
+        // Nothing left: the times of the last request and start are as before.
         entry.sentAt = undefined;
+        this.lastSentAt = previous.sentAt;
+        this.lastStartAt = previous.startAt;
         throw this.refusal(err.kind === ERROR_KINDS.LATE ? ERRORS.tooSlow : ERRORS.notSent(reason));
       }
       if (err.kind === ERROR_KINDS.RATE_LIMITED) {
@@ -978,7 +1094,6 @@ export class RobonectApp {
    * never holds it back when it fails.
    */
   async protect(id, command, received) {
-    const generation = this.generation;
     if (!this.addressed(id, true)) {
       throw this.refusal(ERRORS.unknownMower);
     }
@@ -986,7 +1101,8 @@ export class RobonectApp {
     this.protectSeq += 1;
     const sendBy = received + TIMINGS.commandSendBy;
     const budget = Math.min(TIMINGS.commandReadMax, sendBy - TIMINGS.commandMinSend - this.now());
-    const oneRequest = this.paused || this.blocked || this.mower.readAt === -Infinity;
+    const recent = this.now() - this.mower.readAt < TIMINGS.protectReadFresh;
+    const oneRequest = this.paused || this.blocked || this.mower.readAt === -Infinity || recent;
     if (!oneRequest && budget >= TIMINGS.commandMinRead) {
       try {
         const fresh = await this.freshRead(budget);
@@ -1004,7 +1120,7 @@ export class RobonectApp {
         this.logger.warn(`Robonect: ${command} sent without a fresh read (${errorReason(err)})`);
       }
     }
-    if (generation !== this.generation || !this.addressed(id, true)) {
+    if (!this.addressed(id, true)) {
       throw this.refusal(ERRORS.unknownMower);
     }
     const overtaken = this.startEntry;

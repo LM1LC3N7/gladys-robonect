@@ -156,7 +156,8 @@ export const COMMAND_OF = {
 
 export const mowerIds = (gladys, id) => gladys.externalIds('robonect', id);
 
-const ID = '[0-9a-z](?:[0-9a-z_.-]{0,62}[0-9a-z])?';
+/** The id rule of idOf (src/robonect/client.js): no ":" nor "-" left. */
+const ID = '[0-9a-z](?:[0-9a-z_.]{0,62}[0-9a-z])?';
 
 /** The id and the role of one of our feature external ids, else undefined. */
 export function parseFeatureId(externalId) {
@@ -257,7 +258,12 @@ export function deviceStates(ids, mower, { online, language }) {
       add(FEATURES.CHARGING, mower.code === STATUS.CHARGING ? 1 : 0);
       const inError = mower.code === STATUS.ERROR || mower.code === STATUS.LOOP_LOST;
       add(FEATURES.ERROR, inError ? 1 : 0);
-      add(FEATURES.ERROR_CODE, inError ? (mower.error?.code ?? mower.code) : 0);
+      // The error code only from the error object of the module, never the status code.
+      if (!inError) {
+        add(FEATURES.ERROR_CODE, 0);
+      } else if (mower.error?.code !== undefined) {
+        add(FEATURES.ERROR_CODE, mower.error.code);
+      }
       states.push({
         role: FEATURES.ERROR_TEXT,
         text: inError

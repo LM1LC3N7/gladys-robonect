@@ -57,8 +57,12 @@ does not wake a sleeping module, is sent for these reads.
   use it. It lifts the stop of the mower, which then mows **according to its
   mode** (Auto: following its timer; Home: it stays at the base). Before
   sending, the integration reads the mower again and refuses if the module
-  does not answer fast enough, a value is missing, the mower is in error or
-  switched off, or another module answers at this address. **Check that
+  does not answer fast enough, a value is missing, another module answers at
+  this address, the mower is not stopped (nothing to lift: the answer is a
+  failure, nothing is sent), or its status is not one of: parked, mowing
+  (stopped), looking for its base, charging, searching, sleeping, waiting
+  for the garage door. Any other status (error, off, offline, unknown...)
+  refuses. **Check that
   nobody, child or pet, is on the lawn.**
 - No command is a switch: a "turn everything on/off" (voice assistants,
   scenes) can never start the mower.
@@ -78,6 +82,15 @@ does not wake a sleeping module, is sent for these reads.
 - "Credentials refused": fix the user name or the password and save.
   Otherwise, new try after 15 min, 1 h, then every 6 h, even after a
   restart.
+- **The mower does not show up in Discovery** ("without a valid id"): the
+  integration identifies the module by the `id` field of its `status`
+  answer (":" and "-" removed, for a MAC address for instance), otherwise,
+  once, by the serial number of `cmd=version`. If that is not enough, open
+  an issue on the GitHub repository with the anonymized answer of
+  `http://<module>/json?cmd=status`.
+- `https://` in the address is refused: this version speaks plain HTTP only
+  (the password travels in clear on the local network); enter the address
+  without `https://`.
 - "Not read any more": another module answers at this address (IP address
   given to another device), or the mower was removed.
 

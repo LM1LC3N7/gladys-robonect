@@ -83,7 +83,9 @@ export function normalizeConfig(raw = {}) {
   const typed = String(c.host ?? '').trim();
   // A pasted URL with `user:password@`: never parsed, never shown (it may hold a password).
   const credentialsInHost = typed.includes('@');
-  const address = credentialsInHost ? undefined : parseAddress(typed);
+  // HTTPS asked: refused (v1 speaks plain HTTP), never quietly turned into clear text.
+  const httpsAsked = /^https:\/\//i.test(typed);
+  const address = credentialsInHost || httpsAsked ? undefined : parseAddress(typed);
   const user = ascii(
     typeof c.username === 'string' ? c.username.trim() : c.username,
     LIMITS.userMax,
@@ -106,9 +108,14 @@ export function normalizeConfig(raw = {}) {
   return {
     address,
     /** The text typed when it is not an address (shown in the status, cut); never with an `@`. */
-    invalidHost: typed !== '' && !address && !credentialsInHost ? typed.slice(0, 100) : undefined,
+    invalidHost:
+      typed !== '' && !address && !credentialsInHost && !httpsAsked
+        ? typed.slice(0, 100)
+        : undefined,
     /** Credentials typed in the address field: a fixed message, the text never shown. */
     credentialsInHost,
+    /** `https://` typed: a fixed message, nothing sent. */
+    httpsAsked,
     /** `{ user, password }`, or undefined: no authentication (a module set without one). */
     auth,
     authMissing,

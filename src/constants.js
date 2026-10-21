@@ -18,6 +18,8 @@ export const DEFAULT_PORT = 80;
 
 export const PATHS = {
   status: '/json?cmd=status',
+  /** Read once when the status has no id: its `serial` identifies the module (as Home Assistant does). */
+  version: '/json?cmd=version',
   start: '/json?cmd=start',
   /** The pause of this integration: Robonect's stop. */
   pause: '/json?cmd=stop',
@@ -37,7 +39,24 @@ export const STATUS = {
   OFF: 16,
   SLEEPING: 17,
   GARAGE_DOOR: 18,
+  /** "Offline, cannot bind" (Home Assistant): the module no longer talks to the mower. */
+  OFFLINE_NO_BIND: 98,
+  UNKNOWN: 99,
 };
+
+/**
+ * The only statuses a start may lift the stop on (an allow list: any other
+ * code, unknown or undocumented, refuses). 2: stopped on the lawn.
+ */
+export const START_ALLOWED = new Set([
+  STATUS.PARKED,
+  STATUS.MOWING,
+  STATUS.SEARCHING_BASE,
+  STATUS.CHARGING,
+  STATUS.SEARCHING,
+  STATUS.SLEEPING,
+  STATUS.GARAGE_DOOR,
+]);
 
 /** `status.mode` of the module. */
 export const MODE = {
@@ -152,6 +171,10 @@ export const TIMINGS = {
   commandReadMax: 2_000,
   commandMinRead: 300,
   commandMinSend: 300,
+  /** A pause or a home skips its identity read when the module was read this recently. */
+  protectReadFresh: 10 * SECOND,
+  /** After a restart, the last good read kept in /data shows "connected" while waiting. */
+  lastGoodMax: 2 * HOUR,
   /** A protective command keeps going after the ack, this long at most. */
   protectTimeout: 15 * SECOND,
   /** Reads after a command, spaced: its effect, then a check. */

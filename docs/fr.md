@@ -61,8 +61,11 @@ pour ces lectures.
   alors **selon son mode** (en Auto : selon son minuteur ; en Maison : elle
   reste à la base). Avant de partir, l'intégration relit l'état de la
   tondeuse et refuse si le module ne répond pas assez vite, si une valeur
-  manque, si la tondeuse est en erreur ou éteinte, ou si un autre module
-  répond à cette adresse. **Vérifiez que personne, enfant ou animal, n'est
+  manque, si un autre module répond à cette adresse, si la tondeuse n'est pas
+  arrêtée (rien à lever : réponse en échec, rien n'est envoyé), ou si son
+  statut n'est pas l'un de ceux-ci : garée, tond (arrêtée), cherche sa base,
+  en charge, en recherche, en veille, attend la porte du garage. Tout autre
+  statut (erreur, éteinte, hors ligne, inconnu…) refuse. **Vérifiez que personne, enfant ou animal, n'est
   sur la pelouse.**
 - Aucune commande n'est un interrupteur : un « tout allumer / tout éteindre »
   (assistants vocaux, scènes) ne peut pas démarrer la tondeuse.
@@ -82,6 +85,15 @@ pour ces lectures.
 - « Identifiants refusés » : corrigez le nom d'utilisateur ou le mot de passe
   et enregistrez. Sinon, nouvel essai après 15 min, 1 h, puis toutes les 6 h,
   même après un redémarrage.
+- **La tondeuse n'apparaît pas dans la Découverte** (« sans identifiant
+  valable ») : l'intégration identifie le module par le champ `id` de sa
+  réponse `status` (les « : » et « - » sont retirés, par exemple pour une
+  adresse MAC), sinon, une fois, par le numéro de série de `cmd=version`.
+  Si cela ne suffit pas, ouvrez un ticket sur le dépôt GitHub avec la réponse
+  anonymisée de `http://<module>/json?cmd=status`.
+- `https://` dans l'adresse est refusé : cette version parle seulement HTTP
+  (le mot de passe passe en clair sur le réseau local), saisissez l'adresse
+  sans `https://`.
 - « Plus lue » : un autre module répond à cette adresse (adresse IP
   réattribuée), ou la tondeuse a été retirée.
 

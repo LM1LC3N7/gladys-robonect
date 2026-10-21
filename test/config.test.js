@@ -80,6 +80,8 @@ test('the persisted state is repaired and bounded', () => {
     pause: null,
     block: null,
     mower: null,
+    serial: null,
+    lastGood: null,
     lastAttemptAt: null,
   });
 });

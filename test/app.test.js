@@ -114,9 +114,10 @@ test('the start is off by default: refused, nothing sent', async (t) => {
 
 test('the start: decided on a fresh read, sent only when the mower is stopped', async (t) => {
   const ctx = await setup(t, { config: START_CFG });
-  // Not stopped: nothing to lift, nothing sent.
+  // Not stopped: nothing to lift, nothing sent, and never a success (review 1, M7).
   const first = await ctx.press('start');
-  assert.equal(first.success, true);
+  assert.equal(first.success, false);
+  assert.match(String(first.error), /rien à lever/);
   assert.deepEqual(ctx.server.commands(), []);
   ctx.mower.status.status.stopped = true;
   const reads = ctx.server.reads();

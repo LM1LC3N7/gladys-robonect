@@ -63,6 +63,11 @@ export const STATUS_NAMES = {
   [STATUS.OFF]: both('Switched off', 'Éteinte'),
   [STATUS.SLEEPING]: both('Sleeping', 'En veille'),
   [STATUS.GARAGE_DOOR]: both('Waiting for the garage door', 'Attend la porte du garage'),
+  [STATUS.OFFLINE_NO_BIND]: both(
+    'Offline (module not bound to the mower)',
+    'Hors ligne (module sans liaison avec la tondeuse)',
+  ),
+  [STATUS.UNKNOWN]: both('Unknown', 'Inconnu'),
 };
 export const UNKNOWN_STATUS = both('Unknown status', 'Statut inconnu');
 export const OFFLINE = both('Module unreachable', 'Module injoignable');
@@ -82,6 +87,10 @@ export const UNKNOWN_MODE = both('Unknown mode', 'Mode inconnu');
 
 /** The integration status, the button and the logs a user may read. */
 export const T = {
+  https: both(
+    'HTTPS is not supported in this version: enter the address without https:// (the password then travels in clear on the local network), then save.',
+    "HTTPS n'est pas pris en charge dans cette version : saisissez l'adresse sans https:// (le mot de passe passe alors en clair sur le réseau local), puis enregistrez.",
+  ),
   noHost: both(
     'Enter the IP address of the Robonect module of your mower, its user name and password, then save.',
     "Saisissez l'adresse IP du module Robonect de votre tondeuse, son nom d'utilisateur et son mot de passe, puis enregistrez.",
@@ -145,6 +154,10 @@ export const T = {
       `Plus lue : ${names} (un autre module répond à cette adresse, ou elle a été retirée).`,
     ),
   lastRead: (ago) => both(`Last read ${ago.en} ago.`, `Dernière lecture il y a ${ago.fr}.`),
+  noIdHelp: both(
+    'If the mower never shows up, open an issue on the GitHub repository with the anonymized answer of http://<module>/json?cmd=status.',
+    "Si la tondeuse n'apparaît jamais, ouvrez un ticket sur le dépôt GitHub avec la réponse anonymisée de http://<module>/json?cmd=status.",
+  ),
 };
 
 /** The errors a command answers to Gladys. */
@@ -202,6 +215,11 @@ export const ERRORS = {
     'The module did not give the state the start needs (status, stop flag, battery): not sent.',
     "Le module n'a pas donné l'état dont le démarrage a besoin (statut, arrêt, batterie) : non envoyé.",
   ),
+  notStopped: (mode) =>
+    both(
+      `The mower is not stopped: nothing to lift (mode ${mode.en}; it follows that mode). Nothing sent.`,
+      `La tondeuse n'est pas arrêtée : rien à lever (mode ${mode.fr} ; elle suit ce mode). Rien n'est envoyé.`,
+    ),
   cannotStart: (status) =>
     both(
       `The mower reports "${status.en}": the start is not sent.`,

@@ -83,7 +83,7 @@ export function fakeModule(over = {}) {
     commands: () =>
       server.requests
         .map((r) => /cmd=([a-z]+)(?:&mode=([a-z]+))?/.exec(r.path))
-        .filter((m) => m && m[1] !== 'status')
+        .filter((m) => m && m[1] !== 'status' && m[1] !== 'version')
         .map((m) => (m[2] ? `${m[1]}:${m[2]}` : m[1])),
     reads: () => server.requests.filter((r) => r.path === '/json?cmd=status').length,
     async transport(request) {
@@ -95,6 +95,15 @@ export function fakeModule(over = {}) {
       const cmd = /cmd=([a-z]+)/.exec(path)?.[1];
       if (now() > startBy) {
         throw new RobonectError(ERROR_KINDS.LATE, 'Too late to send');
+      }
+      if (cmd === 'version') {
+        if (headers.Authorization !== basic(mower.user, mower.password)) {
+          return answer(401, 'Unauthorized');
+        }
+        return answer(200, { successful: true, serial: mower.serial ?? 'RN-0042-77' });
+      }
+      if (mower.unreachable?.[cmd]) {
+        throw new RobonectError(ERROR_KINDS.UNREACHABLE, 'Unreachable: ECONNREFUSED');
       }
       if (cmd !== 'status') {
         const answerAfter = mower.answerAfter[cmd] ?? 0;
@@ -139,3 +148,6 @@ export const settle = async (rounds = 20) => {
     await new Promise((resolve) => setImmediate(resolve));
   }
 };
+
+export const versionReads = (server) =>
+  server.requests.filter((r) => r.path === '/json?cmd=version').length;

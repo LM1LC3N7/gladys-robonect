@@ -52,7 +52,8 @@ test('parseStatus never reads through a prototype', () => {
 test('texts and ids are bounded and cleaned', () => {
   assert.equal(text('a\u0000b\u0007c'), 'abc');
   assert.equal(text('x'.repeat(500)).length, 80);
-  assert.equal(idOf(' AB-12 '), 'ab-12');
+  assert.equal(idOf(' AB-12 '), 'ab12', 'frozen rule: no ":" nor "-"');
+  assert.equal(idOf('00:1A:2B:3C:4D:5E'), '001a2b3c4d5e', 'a MAC');
   assert.equal(idOf('a/b'), undefined);
   assert.equal(idOf('x'.repeat(65)), undefined);
 });

@@ -36,13 +36,30 @@ export function text(value) {
   return clean === '' ? undefined : clean.slice(0, LIMITS.textLength);
 }
 
-/** The id of the module (`id` of the status answer), lower case, else undefined. */
+/**
+ * The id of the module (`id` of the status answer, or `serial` of the
+ * version answer), else undefined. FROZEN RULE (it makes the external ids):
+ * trimmed, every ":" and "-" removed (a MAC "00:1A:2B:3C:4D:5E" gives
+ * "001a2b3c4d5e"), lower case, then 1 to 64 of [0-9a-z_.], starting and
+ * ending with a letter or a digit.
+ */
 export function idOf(value) {
   if (typeof value !== 'string') {
     return undefined;
   }
-  const id = value.trim().toLowerCase();
-  return /^[0-9a-z](?:[0-9a-z_.-]{0,62}[0-9a-z])?$/.test(id) ? id : undefined;
+  const id = value.trim().replace(/[:-]/g, '').toLowerCase();
+  return /^[0-9a-z](?:[0-9a-z_.]{0,62}[0-9a-z])?$/.test(id) ? id : undefined;
+}
+
+/** GET /json?cmd=version -> the serial of the module as an id, else undefined. */
+export function parseVersion(data) {
+  if (!plain(data)) {
+    throw notObject();
+  }
+  if (own(data, 'successful') !== true) {
+    throw new RobonectError(ERROR_KINDS.PROTOCOL, 'Not a successful version');
+  }
+  return idOf(own(data, 'serial'));
 }
 
 const notObject = () => new RobonectError(ERROR_KINDS.PROTOCOL, 'Not a JSON object');
@@ -180,6 +197,11 @@ export class RobonectClient {
     return parseStatus(await this.get(address, auth, PATHS.status, { timeoutMs }));
   }
 
+  /** The serial of the module (`cmd=version`, which wakes a sleeping module: read rarely). */
+  async version(address, auth, { timeoutMs }) {
+    return parseVersion(await this.get(address, auth, PATHS.version, { timeoutMs }));
+  }
+
   /**
    * One command (`start`, `stop` or `home`), never retried. `startBy`:
    * refused unsent (LATE) when the request could not be written by then.
@@ -188,7 +210,7 @@ export class RobonectClient {
    */
   async command(address, auth, name, { timeoutMs, startBy }) {
     const path = PATHS[name];
-    if (!path || name === 'status') {
+    if (!path || name === 'status' || name === 'version') {
       throw Object.assign(new Error('Unknown command'), { notSent: true });
     }
     if (this.now() > startBy) {
