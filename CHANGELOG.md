@@ -10,6 +10,14 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- One connection per request: the HTTP client no longer opens a second
+  connection after the one whose deadline was checked (`createConnection` was
+  ignored); a start can no longer leave on a connection opened after its
+  deadline, and a refused connection is reported "unreachable", not
+  "timeout".
+
 ## [0.1.1] - 2026-10-21
 
 ### Added

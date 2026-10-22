@@ -165,3 +165,68 @@ test('http: nothing listening is unreachable (nothing sent)', async () => {
   );
   assert.equal(err.kind, ERROR_KINDS.UNREACHABLE);
 });
+
+/** A real HTTP server behind a TCP relay that counts the connections it accepts. */
+async function relayed(t) {
+  const { createServer: createHttpServer } = await import('node:http');
+  const { connect } = await import('node:net');
+  const backend = { requests: 0 };
+  const http = createHttpServer((req, res) => {
+    backend.requests += 1;
+    res.setHeader('Content-Type', 'application/json');
+    res.end('{"successful":true}');
+  });
+  await new Promise((resolve) => http.listen(0, '127.0.0.1', resolve));
+  const relay = { connections: 0 };
+  const tcp = createServer((client) => {
+    relay.connections += 1;
+    const upstream = connect(http.address().port, '127.0.0.1');
+    client.pipe(upstream).pipe(client);
+    client.on('error', () => upstream.destroy());
+    upstream.on('error', () => client.destroy());
+  });
+  await new Promise((resolve) => tcp.listen(0, '127.0.0.1', resolve));
+  t.after(() => {
+    tcp.close();
+    http.close();
+    http.closeAllConnections?.();
+  });
+  return { port: tcp.address().port, backend, relay };
+}
+
+test('http: one connection per request, the deadline checked on it (createConnection honoured)', async (t) => {
+  const ok = await relayed(t);
+  const res = await request({ host: '127.0.0.1', port: ok.port, path: '/json?cmd=status' });
+  assert.equal(res.status, 200);
+  assert.equal(res.body, '{"successful":true}');
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(ok.relay.connections, 1, 'a single connection');
+  assert.equal(ok.backend.requests, 1);
+
+  const late = await relayed(t);
+  const err = await request({
+    host: '127.0.0.1',
+    port: late.port,
+    path: '/json?cmd=start',
+    startBy: 1000,
+    now: () => 2000,
+  }).catch((e) => e);
+  assert.equal(err.kind, ERROR_KINDS.LATE);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(late.relay.connections, 1, 'the deadline is on the one connection opened');
+  assert.equal(late.backend.requests, 0, 'nothing written');
+});
+
+test('http: a refused connection is unreachable, never a timeout', async () => {
+  const closed = createServer();
+  await new Promise((resolve) => closed.listen(0, '127.0.0.1', resolve));
+  const port = closed.address().port;
+  await new Promise((resolve) => closed.close(resolve));
+  const err = await request({
+    host: '127.0.0.1',
+    port,
+    path: '/json?cmd=stop',
+    timeoutMs: 3000,
+  }).catch((e) => e);
+  assert.equal(err.kind, ERROR_KINDS.UNREACHABLE);
+});

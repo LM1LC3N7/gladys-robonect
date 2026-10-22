@@ -109,7 +109,8 @@ export function request({
           port,
           method: 'GET',
           path,
-          agent: false,
+          // No `agent`: with `agent: false` Node ignores createConnection and
+          // opens a second connection, on which the deadline was never checked.
           createConnection: () => socket,
           headers: { Connection: 'close', Accept: 'application/json', ...headers },
         },
