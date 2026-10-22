@@ -1,6 +1,6 @@
 {
   "name": "gladys-robonect",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Gladys Assistant external integration for robotic lawn mowers fitted with a Robonect module (Husqvarna, Gardena, Flymo...): state, battery, errors, mowing hours, Wi-Fi signal; pause and return to the base; optional start. Over the local JSON API of the module. Unofficial, not affiliated with Robonect.",
   "type": "module",
